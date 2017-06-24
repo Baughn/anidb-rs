@@ -12,7 +12,6 @@ static PASSWORD: &'static str = "pass";
 fn login_logout() -> Result<()> {
     let mut db = Anidb::new(("api.anidb.net", 9000))?;
     db.login(USERNAME, PASSWORD)?;
-    db.wait_exec_command(500);  // wait 500 ms
     db.logout()?;
     println!("Evenything went ok!");
     Ok(())

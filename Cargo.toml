@@ -2,7 +2,7 @@
 name = "anidb"
 version = "0.0.1"
 license = "MIT/Apache-2.0"
-authors = ["Daniel Collin <daniel@collin.com>"]
+authors = ["Daniel Collin <daniel@collin.com>", "Svein Ove Aas <sveina@gmail.com>"]
 description = "Simplify talking with the AniDB UDP API"
 keywords = ["anidb", "database"]
 repository = "https://github.com/emoon/anidb-rs"
@@ -10,4 +10,4 @@ homepage = "https://github.com/emoon/anidb-rs"
 
 [dependencies]
 rust-crypto = "^0.2"
-
+rand = "^0.3"

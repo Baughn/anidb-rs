@@ -4,32 +4,40 @@ mod mock_server;
 
 use anidb::Anidb;
 use std::thread;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 use mock_server::MockServer;
 
-#[test]
-fn it_works_1() {
-    let port: u16 = 4444u16;
-
+fn setup(port: u16) {
+    let server = MockServer::new(port).expect("Server setup failed");
+    
     thread::spawn(move || {
-        let server = MockServer::new(port).unwrap();
         server.update();
     });
+}
 
-    thread::sleep(Duration::from_millis(200));
+fn login_logout(mut db: Anidb) {
+    db.login("foo", "bar").expect("Login failed");
+    db.logout().expect("Logout failed");
+}
+
+#[test]
+fn it_works() {
+    let port = 4444u16;
+    setup(port);
 
     let mut db = Anidb::new(("127.0.0.1", port)).unwrap();
-
-    db.login("foo", "bar").unwrap();
-    db.logout().unwrap();
+    db.ratelimit = Duration::from_secs(0);
+    login_logout(db);
 }
 
 #[test]
-fn it_works_2() {
+fn ratelimit_works() {
+    let port = 4445u16;
+    setup(port);
+
+    let db = Anidb::new(("127.0.0.1", port)).unwrap();
+    let before = Instant::now();
+    login_logout(db);
+    let after = Instant::now();
+    assert!(after.duration_since(before) >= Duration::from_secs(8));
 }
-
-#[test]
-fn it_works_3() {
-}
-
-

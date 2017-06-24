@@ -10,7 +10,7 @@ pub use errors::{AnidbError, Result};
 //use std::io;
 use std::str;
 use std::thread;
-use std::time::Duration;
+use std::time::{Instant, Duration};
 
 use std::net::UdpSocket;
 
@@ -18,6 +18,11 @@ pub struct Anidb {
     pub socket: UdpSocket,
     pub address: SocketAddr,
     pub session: String,
+
+    /// These are used to enforce flood protection.
+    /// Don't override, Anidb will ban you.
+    pub last_send: Instant,
+    pub ratelimit: Duration,
 }
 
 pub struct ServerReply {
@@ -34,13 +39,15 @@ impl Anidb {
     /// ```
     ///
     pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Anidb> {
-        let socket = UdpSocket::bind(("0.0.0.0", 9000))?;
+        let socket = UdpSocket::bind(("0.0.0.0", 0))?;
         socket.connect(&addr)?;
 
         Ok(Anidb {
             socket: socket,
             address: addr.to_socket_addrs().unwrap().next().unwrap(),
             session: "".to_owned(),
+            last_send: Instant::now(),
+            ratelimit: Duration::from_secs(4),
         })
     }
 
@@ -67,8 +74,8 @@ impl Anidb {
         Ok(())
     }
 
-    ///
-    /// Login the user to AniDB. You need to supply a user/pass that you have regisered at https://anidb.net/
+    /// Login the user to AniDB. You need to supply a user/pass that you have
+    /// registered at https://anidb.net/
     ///
     /// # Examples
     ///
@@ -112,10 +119,6 @@ impl Anidb {
         Ok(v[0].to_owned())
     }
 
-    pub fn wait_exec_command(&self, time: u64) {
-        thread::sleep(Duration::from_millis(time))
-    }
-
     /// Parse the reply from the server which is expected to be in xxx - format. If that is not the
     /// case this function will return an error that the reply couldn't be parsed.
     fn parse_reply(reply: &[u8], len: usize) -> Result<ServerReply> {
@@ -130,7 +133,13 @@ impl Anidb {
         })
     }
 
-    fn send_wait_reply(&self, message: &str) -> Result<ServerReply> {
+    fn send_wait_reply(&mut self, message: &str) -> Result<ServerReply> {
+        let now = Instant::now();
+        let period = now.duration_since(self.last_send);
+        if period < self.ratelimit {
+            thread::sleep(self.ratelimit - period);
+        }
+        self.last_send = Instant::now();
         let mut result = [0; 2048];
         self.socket.send(message.as_bytes())?;
         let len = self.socket.recv(&mut result)?;
