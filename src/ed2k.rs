@@ -4,11 +4,12 @@ use errors::{Result};
 use md4::Md4;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
 const BLOCKSIZE: usize = 9500 * 1024;
 
 impl Ed2kHash {
-    pub fn hash_file(filename: &str) -> Result<()> {
+    pub fn hash_bin(filename: &Path) -> Result<[u8; 16]> {
         let mut md4_digest = [0; 16];
 
         let mut file = File::open(filename)?;
@@ -38,13 +39,16 @@ impl Ed2kHash {
             ctx_f.result(&mut md4_digest);
         }
 
-        for t in &md4_digest {
-            print!("{:02x}", t);
+        Ok(md4_digest)
+    }
+
+    pub fn hash_hex(filename: &Path) -> Result<String> {
+        let hash = Ed2kHash::hash_bin(filename)?;
+        let mut ret = String::with_capacity(32);
+        for hex in hash.iter() {
+            ret.push_str(&format!("{:02x}", hex));
         }
-
-        println!("");
-
-        Ok(())
+        Ok(ret)
     }
 }
 
