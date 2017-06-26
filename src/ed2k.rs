@@ -1,4 +1,3 @@
-pub struct Ed2kHash;
 use crypto::digest::Digest;
 use errors::{Result};
 use md4::Md4;
@@ -8,8 +7,15 @@ use std::path::Path;
 
 const BLOCKSIZE: usize = 9500 * 1024;
 
+#[derive(Debug)]
+pub struct Ed2kHash {
+    pub bin: [u8; 16],
+    pub size: u64,
+    pub hex: String,
+}
+
 impl Ed2kHash {
-    pub fn hash_bin(filename: &Path) -> Result<[u8; 16]> {
+    pub fn from_file(filename: &Path) -> Result<Ed2kHash> {
         let mut md4_digest = [0; 16];
 
         let mut file = File::open(filename)?;
@@ -39,16 +45,20 @@ impl Ed2kHash {
             ctx_f.result(&mut md4_digest);
         }
 
-        Ok(md4_digest)
+        
+        Ok(Ed2kHash {
+            bin: md4_digest,
+            hex: Self::hex(md4_digest),
+            size: file_size as u64,
+        })
     }
-
-    pub fn hash_hex(filename: &Path) -> Result<String> {
-        let hash = Ed2kHash::hash_bin(filename)?;
+    
+    fn hex(bin: [u8; 16]) -> String {
         let mut ret = String::with_capacity(32);
-        for hex in hash.iter() {
+        for hex in bin.iter() {
             ret.push_str(&format!("{:02x}", hex));
         }
-        Ok(ret)
+        ret
     }
 }
 

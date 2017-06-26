@@ -5,14 +5,15 @@ mod cutil;
 pub mod ed2k;
 pub mod md4;
 
-use std::net::{SocketAddr, ToSocketAddrs};
 pub use errors::{AnidbError, Result};
-//use std::io;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::str;
 use std::thread;
 use std::time::{Instant, Duration};
 
 use std::net::UdpSocket;
+
+use ed2k::Ed2kHash;
 
 pub struct Anidb {
     pub socket: UdpSocket,
@@ -30,12 +31,23 @@ pub struct ServerReply {
     pub data: String,
 }
 
+pub struct File {
+    pub fid: u32,
+    pub aid: u32,
+    pub eid: u32,
+    pub gid: u32,
+    pub state: u32,
+    pub size: u64,
+    // "Canonical" filename, as per AniDB.
+    pub filename: String,
+}
+
 impl Anidb {
     ///
     /// Creates a new instance of Anidb and makes a connection to the AniDB API server
     /// ```ignore
     /// // code unwraps for simplicy but the error codes should be handled by the errors
-    /// let mut db = anidb::Anidb::new(("anidb_server.net", 6666)).unwrap();
+    /// let mut db = anidb::Anidb::new(("api.anidb.net", 9000)).unwrap();
     /// ```
     ///
     pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Anidb> {
@@ -58,7 +70,7 @@ impl Anidb {
     ///
     /// ```ignore
     /// // code unwraps for simplicy but the error codes should be handled by the errors
-    /// let mut db = anidb::Anidb::new(("anidb_server.net", 6666)).unwrap();
+    /// let mut db = anidb::Anidb::new(("api.anidb.net", 9000)).unwrap();
     /// db.login("leeloo_dallas", "multipass").unwrap();
     /// ```
     ///
@@ -81,22 +93,38 @@ impl Anidb {
     ///
     /// ```ignore
     /// // code unwraps for simplicy but the error codes should be handled by the errors
-    /// let mut db = anidb::Anidb::new(("anidb_server.net", 6666)).unwrap();
+    /// let mut db = anidb::Anidb::new(("api.anidb.net", 9000)).unwrap();
     /// db.login("leeloo_dallas", "multipass").unwrap();
     /// db.logout()unwrap();
     /// ```
     ///
     pub fn logout(&mut self) -> Result<()> {
-        if self.session == "" {
-            return Err(AnidbError::StaticError("Not logged in"));
-        }
-
+        self.assert_session()?;
         let logout_str = Self::format_logout_string(&self.session);
 
         let reply = self.send_wait_reply(&logout_str)?;
 
         println!("Reply from server {}", reply.data);
 
+        Ok(())
+    }
+
+    /// Search for a file, by hash.
+    pub fn file_from_hash(&mut self, hash: &Ed2kHash) -> Result<File> {
+        self.assert_session()?;
+
+        let file_str = Self::format_file_hash_str(&self.session, hash);
+        let reply = self.send_wait_reply(&file_str)?;
+
+        println!("Reply from server {}", reply.data);
+
+        Err(AnidbError::Error(format!("err")))
+    }
+
+    fn assert_session(&self) -> Result<()> {
+        if self.session == "" {
+            return Err(AnidbError::StaticError("Not logged in"));
+        }
         Ok(())
     }
 
@@ -152,6 +180,11 @@ impl Anidb {
 
     fn format_login_string(username: &str, password: &str) -> String {
         format!("AUTH user={}&pass={}&protover=3&client=anidbrs&clientver=1", username, password)
+    }
+
+    fn format_file_hash_str(session_id: &str, hash: &Ed2kHash) -> String {
+        format!("FILE s={}&size={}&ed2k={}&fmask=7000000100&amask=F0B8E0C0",
+                session_id, hash.size, hash.hex)
     }
 }
 
