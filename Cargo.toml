@@ -13,13 +13,8 @@ rust-crypto = "^0.2"
 rand = "^0.3"
 rust-ini = "^0.12"
 app_dirs = "^1.2"
+argparse = "^0.2"
 
 [dependencies.rusqlite]
 version = "^0.13"
 features = ["bundled"]
-
-[dependencies.argparse]
-version = "0.2.1"
-
-[dependencies.rayon]
-version = "^1.0"

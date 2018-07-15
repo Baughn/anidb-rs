@@ -9,9 +9,6 @@ extern crate anidb;
 use anidb::ed2k::Ed2kHash;
 use anidb::{Anidb, AnidbError, File};
 
-extern crate rayon;
-use rayon::prelude::*;
-
 extern crate app_dirs;
 use app_dirs::*;
 
@@ -179,7 +176,7 @@ fn main() -> () {
     db.lock().unwrap().login(&config.user, &config.password).expect("Failed AniDB login");
 
     // List all files, hash and send them...
-    args.par_iter()
+    args.iter()
         .flat_map(|filename| walk_dir(Path::new(&filename).canonicalize().unwrap().as_path()))
         .map(|file| hash(file))
         .for_each(|hashdata| search(&db, mode_noop, hashdata, &config.target));
