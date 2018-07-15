@@ -6,6 +6,7 @@ use ServerReply;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::PathBuf;
+use std::fs;
 
 pub struct Cache {
     conn: Connection
@@ -17,6 +18,7 @@ fn now() -> i64 {
 
 impl Cache {
     pub fn new(cache_dir: &PathBuf) -> Result<Cache> {
+        fs::create_dir_all(cache_dir)?;
         let conn = Connection::open(cache_dir.join("anidb-rs.sqlite"))?;
         conn.execute("PRAGMA encoding=\"UTF-8\"", &[])?;
         conn.execute("CREATE TABLE IF NOT EXISTS apicall (
