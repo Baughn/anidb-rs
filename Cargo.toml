@@ -14,6 +14,7 @@ rand = "^0.3"
 rust-ini = "^0.12"
 app_dirs = "^1.2"
 argparse = "^0.2"
+walkdir = "2"
 
 [dependencies.rusqlite]
 version = "^0.13"

@@ -2,8 +2,11 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::iter::FromIterator;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::{Arc, Mutex};
+
+extern crate walkdir;
+use walkdir::WalkDir;
 
 extern crate anidb;
 use anidb::ed2k::Ed2kHash;
@@ -53,28 +56,6 @@ impl ConfigData {
 }
 
 
-fn walk_dir(path: &Path) -> BTreeSet<PathBuf> {
-    let mut set = BTreeSet::new();
-    let ftype = path.symlink_metadata().expect("walk_dir meta").file_type();
-    if ftype.is_symlink() {
-        // Skip.
-    } else if ftype.is_dir() {
-        for entry in fs::read_dir(path).expect("walk_dir read") {
-            let entry = entry.expect("walk_dir entry");
-            let next = entry.path();
-            if next.is_dir() {
-                set.append(&mut walk_dir(&next));
-            } else {
-                set.insert(entry.path());
-            }
-        }
-    } else {
-        assert!(ftype.is_file());
-        set.insert(path.to_path_buf());
-    }
-    return set;
-}
-
 /// All the data we could ever want about hashed files...
 #[derive(Debug)]
 struct HashData {
@@ -84,10 +65,7 @@ struct HashData {
 
 fn hash(filename: PathBuf) -> HashData {
     let hash = Ed2kHash::from_file(&filename);
-    return HashData {
-        filename: filename,
-        hash: hash
-    };
+    HashData { filename, hash }
 }
 
 fn clean(raw: &String) -> String {
@@ -177,7 +155,9 @@ fn main() -> () {
 
     // List all files, hash and send them...
     args.iter()
-        .flat_map(|filename| walk_dir(Path::new(&filename).canonicalize().unwrap().as_path()))
-        .map(|file| hash(file))
+        .flat_map(|ref dirname| WalkDir::new(dirname))
+        .filter_map(|entry| entry.map(Some).unwrap_or(None))
+        .filter(|entry| entry.file_type().is_file())
+        .map(|file| hash(file.path().to_path_buf()))
         .for_each(|hashdata| search(&db, mode_noop, hashdata, &config.target));
 }
