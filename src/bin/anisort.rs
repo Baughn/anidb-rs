@@ -103,8 +103,9 @@ fn build_path(file: &File, hashdata: &HashData, target_dir: &PathBuf) -> PathBuf
     let mut new_name = format!("{} - ", series);
     // Episode number.
     let ep_num_int: std::result::Result<u32, _> = file.ep_number.parse();
+    let ep_digits = std::cmp::max(format!("{}", file.total_eps).len(), 2);
     if ep_num_int.is_ok() {
-        for _ in (file.ep_number.len())..(format!("{}", file.total_eps).len()) {
+        for _ in file.ep_number.len()..ep_digits {
             new_name.push('0');
         }
     }
@@ -112,7 +113,7 @@ fn build_path(file: &File, hashdata: &HashData, target_dir: &PathBuf) -> PathBuf
     // Episode name.
     let ep_name = &file.ep_name;
     assert!(ep_name != "");
-    new_name.push_str(&format!(" {}", ep_name));
+    new_name.push_str(&format!(" - {}", ep_name));
     // Extension.
     let ext = hashdata.filename.extension().expect("Extension").to_str().expect("to_str");
     new_name.push('.');
