@@ -1,6 +1,8 @@
 extern crate crypto;
+extern crate rusqlite;
 
 mod errors;
+mod cache;
 mod cutil;
 pub mod ed2k;
 pub mod md4;
@@ -10,36 +12,62 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::str;
 use std::thread;
 use std::time::{Instant, Duration};
+use std::path::PathBuf;
 
 use std::net::UdpSocket;
 
 use ed2k::Ed2kHash;
+use cache::Cache;
 
 pub struct Anidb {
     pub socket: UdpSocket,
     pub address: SocketAddr,
-    pub session: String,
+    pub session: Session,
 
     /// These are used to enforce flood protection.
     /// Don't override, Anidb will ban you.
     pub last_send: Instant,
     pub ratelimit: Duration,
+
+    /// API cache.
+    pub cache: Cache,
 }
 
+#[derive(Debug)]
 pub struct ServerReply {
-    pub code: usize,
+    pub code: i32,
     pub data: String,
 }
 
+#[derive(Debug)]
 pub struct File {
     pub fid: u32,
     pub aid: u32,
     pub eid: u32,
     pub gid: u32,
-    pub state: u32,
-    pub size: u64,
-    // "Canonical" filename, as per AniDB.
+    /// "Canonical" filename, as per AniDB.
     pub filename: String,
+    pub total_eps: u32,
+    pub highest_ep: u32,
+    pub year: String,
+    pub typ: String,
+    pub series_romaji: String,
+    pub series_english: String,
+    pub series_other: String,
+    pub series_short: String,
+    /// The episode number can be non-numeric, e.g. for specials.
+    pub ep_number: String,
+    pub ep_name: String,
+    pub ep_romaji: String,
+    pub group_name: String,
+    pub group_short: String,
+}
+
+#[derive(Debug)]
+pub enum Session {
+    Disconnected,
+    Pending {user: String, pwd: String},
+    Connected(String),
 }
 
 impl Anidb {
@@ -50,21 +78,24 @@ impl Anidb {
     /// let mut db = anidb::Anidb::new(("api.anidb.net", 9000)).unwrap();
     /// ```
     ///
-    pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Anidb> {
+    pub fn new<A: ToSocketAddrs>(addr: A, cache_dir: &PathBuf) -> Result<Anidb> {
         let socket = UdpSocket::bind(("0.0.0.0", 0))?;
         socket.connect(&addr)?;
 
         Ok(Anidb {
             socket: socket,
             address: addr.to_socket_addrs().unwrap().next().unwrap(),
-            session: "".to_owned(),
+            session: Session::Disconnected,
             last_send: Instant::now(),
             ratelimit: Duration::from_secs(4),
+            cache: Cache::new(cache_dir).expect("Cache creation failed"),
         })
     }
 
+    /// Login the user to AniDB. You need to supply a user/pass that you have
+    /// registered at https://anidb.net/
     ///
-    /// Login the user to AniDB. You need to supply a user/pass that you have regisered at https://anidb.net/
+    /// The login is not actually executed until needed.
     ///
     /// # Examples
     ///
@@ -75,57 +106,103 @@ impl Anidb {
     /// ```
     ///
     pub fn login(&mut self, username: &str, password: &str) -> Result<()> {
-        let login_str = Self::format_login_string(username, password);
-
-        let reply = self.send_wait_reply(&login_str)?;
-
-        println!("Reply from server {}", reply.data);
-
-        self.session = Self::validate_auth_command(&reply)?;
-
+        self.session = Session::Pending {
+            user: username.to_owned(),
+            pwd: password.to_owned()
+        };
         Ok(())
     }
 
-    /// Login the user to AniDB. You need to supply a user/pass that you have
-    /// registered at https://anidb.net/
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// // code unwraps for simplicy but the error codes should be handled by the errors
-    /// let mut db = anidb::Anidb::new(("api.anidb.net", 9000)).unwrap();
-    /// db.login("leeloo_dallas", "multipass").unwrap();
-    /// db.logout()unwrap();
-    /// ```
-    ///
+    /// Explicitly log out, e.g. to login as a different user.
     pub fn logout(&mut self) -> Result<()> {
-        self.assert_session()?;
-        let logout_str = Self::format_logout_string(&self.session);
-
-        let reply = self.send_wait_reply(&logout_str)?;
-
-        println!("Reply from server {}", reply.data);
-
+        // TODO: Non-lexical lifetimes will let us simplify this.
+        let logout_cmd = match self.session {
+            Session::Connected(ref session) =>
+                Self::format_logout_string(session),
+            _ => "".to_owned()
+        };
+        if logout_cmd != "" {
+            let reply = self.send_wait_reply(&logout_cmd)?;
+            println!("Reply from server {}", reply.data);
+        }
+        self.session = Session::Disconnected;
         Ok(())
     }
 
     /// Search for a file, by hash.
     pub fn file_from_hash(&mut self, hash: &Ed2kHash) -> Result<File> {
-        self.assert_session()?;
-
-        let file_str = Self::format_file_hash_str(&self.session, hash);
-        let reply = self.send_wait_reply(&file_str)?;
-
-        println!("Reply from server {}", reply.data);
-
-        Err(AnidbError::Error(format!("err")))
+        let file_str = Self::format_file_hash_str(hash);
+        let reply = self.call_cached(&file_str)?;
+        match reply.code {
+            322 => Err(AnidbError::Error("Found multiple files. Panic!".to_owned())),
+            320 => Err(AnidbError::NoSuchFile),
+            220 => {
+                let data = reply.data.split('\n').nth(1).expect("FILE format error");
+                let mut fields = data.split('|');
+                // The list of what we asked for.
+                // Currently that's statically determined by the query format.
+                let fid = fields.next().expect("fid not found");
+                let aid = fields.next().expect("aid not found");
+                let eid = fields.next().expect("eid not found");
+                let gid = fields.next().expect("gid not found");
+                let filename = fields.next().expect("filename not found");
+                let total_eps = fields.next().expect("total_eps not found");
+                let highest_ep = fields.next().expect("highest_ep not found");
+                let year = fields.next().expect("year not found");
+                let typ = fields.next().expect("typ not found");
+                let series_romaji = fields.next().expect("series_romaji not found");
+                let series_english = fields.next().expect("series_english not found");
+                let series_other = fields.next().expect("series_other not found");
+                let series_short = fields.next().expect("series_short not found");
+                let ep_number = fields.next().expect("ep_number not found");
+                let ep_name = fields.next().expect("ep_name not found");
+                let ep_romaji = fields.next().expect("ep_romaji not found");
+                let group_name = fields.next().expect("group_name not found");
+                let group_short = fields.next().expect("group_short not found");
+                
+                Ok(File {
+                    fid: fid.parse().expect("fid"),
+                    aid: aid.parse().expect("aid"),
+                    eid: eid.parse().expect("eid"),
+                    gid: gid.parse().expect("gid"),
+                    filename: filename.to_owned(),
+                    total_eps: total_eps.parse().expect("total_eps"),
+                    highest_ep: highest_ep.parse().expect("highest"),
+                    year: year.to_owned(),
+                    typ: typ.to_owned(),
+                    series_romaji: series_romaji.to_owned(),
+                    series_english: series_english.to_owned(),
+                    series_other: series_other.to_owned(),
+                    series_short: series_short.to_owned(),
+                    ep_number: ep_number.to_owned(),
+                    ep_name: ep_name.to_owned(),
+                    ep_romaji: ep_romaji.to_owned(),
+                    group_name: group_name.to_owned(),
+                    group_short: group_short.to_owned(),
+                })
+            }
+            code => Err(AnidbError::Error(format!("Unexpected code {}", code)))
+        }
     }
 
-    fn assert_session(&self) -> Result<()> {
-        if self.session == "" {
-            return Err(AnidbError::StaticError("Not logged in"));
+    fn assert_session(&mut self) -> Result<String> {
+        // TODO: Non-lexical lifetimes will let us simplify this.
+        let login_cmd = match self.session {
+            Session::Disconnected => String::new(),
+            Session::Connected(_) => String::new(),
+            Session::Pending {ref user, ref pwd} =>
+                Self::format_login_string(user, pwd)
+        };
+        if login_cmd != "" {
+            let reply = self.send_wait_reply(&login_cmd)?;
+            println!("Reply from server {}", reply.data);
+            let session = Self::validate_auth_command(&reply)?;
+            self.session = Session::Connected(session);
         }
-        Ok(())
+        match self.session {
+            Session::Connected(ref session) => Ok(session.clone()),
+            _ => unreachable!(),
+        }
     }
 
     /// Validates that the auth command has a correct reply from the server
@@ -154,7 +231,7 @@ impl Anidb {
             return Err(AnidbError::StaticError("Reply less than 5 chars"));
         }
         let code_str = str::from_utf8(&reply[0..3])?;
-        let code = code_str.parse::<usize>()?;
+        let code = code_str.parse::<i32>()?;
         Ok(ServerReply {
             code: code,
             data: String::from_utf8_lossy(&reply[4..len]).into_owned(),
@@ -174,6 +251,25 @@ impl Anidb {
         Self::parse_reply(&result, len)
     }
 
+    fn call_cached(&mut self, message: &str) -> Result<ServerReply> {
+        let cached = self.cache.get(message);
+        match cached {
+            Err (AnidbError::SqliteError(rusqlite::Error::QueryReturnedNoRows)) =>
+                self.call(message),
+            Err(err) => Err(err),
+            Ok(result) => Ok(result),
+        }
+    }
+
+    fn call(&mut self, message: &str) -> Result<ServerReply> {
+        let s = self.assert_session()?;
+        let mws = format!("{}&s={}", message, s);
+        let reply = self.send_wait_reply(&mws)?;
+        println!("Reply from server {:?}", reply);
+        self.cache.put(message, &reply)?;
+        Ok(reply)
+    }
+
     fn format_logout_string(session_id: &str) -> String {
         format!("LOGOUT s={}", session_id)
     }
@@ -182,9 +278,9 @@ impl Anidb {
         format!("AUTH user={}&pass={}&protover=3&client=anidbrs&clientver=1", username, password)
     }
 
-    fn format_file_hash_str(session_id: &str, hash: &Ed2kHash) -> String {
-        format!("FILE s={}&size={}&ed2k={}&fmask=7000000100&amask=F0B8E0C0",
-                session_id, hash.size, hash.hex)
+    fn format_file_hash_str(hash: &Ed2kHash) -> String {
+        format!("FILE size={}&ed2k={}&fmask=7000000100&amask=F0B8E0C0",
+                hash.size, hash.hex)
     }
 }
 
@@ -225,6 +321,11 @@ mod test_parse {
         let ret = Anidb::parse_reply(reply, reply.len()).unwrap();
         assert_eq!(ret.code, 777);
         assert_eq!(ret.data, "O");
+    }
+
+    fn test_parse_file() {
+        let reply = b"220 FILE\n1879191|12235|183230|10435|Little Witch Academia (2017) - 01 - A New Beginning - [Asenshi](6a9d1e5c).mkv|25|25|2017-2017|TV Series|Little Witch Academia (2017)||???????????? (2017)'?? ?? ????? (2017)|lwatv|01|A New Beginning|Arata na Hajimari|AnimeSenshi Subs|Asenshi|1498599583";
+        
     }
 }
 
