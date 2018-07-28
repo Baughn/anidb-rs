@@ -3,13 +3,13 @@ extern crate anidb;
 mod mock_server;
 
 use anidb::Anidb;
-use std::thread;
-use std::time::{Instant, Duration};
 use mock_server::MockServer;
+use std::thread;
+use std::time::{Duration, Instant};
 
 fn setup(port: u16) {
     let server = MockServer::new(port).expect("Server setup failed");
-    
+
     thread::spawn(move || {
         server.update();
     });

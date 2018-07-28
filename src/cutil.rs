@@ -1,8 +1,8 @@
 // Code has been copy'n'pasted from rust-crypto because https://github.com/DaGenix/rust-crypto/pull/371 hasn't been merged yet and this
 // is needed for the md4 impl but the rust-crypto keeps all of these private
 
-use std::ptr;
 use std::mem;
+use std::ptr;
 
 // The StandardPadding trait adds a method useful for various hash algorithms to a FixedBuffer
 /// struct.
@@ -14,7 +14,7 @@ pub trait StandardPadding {
     fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, func: F);
 }
 
-impl <T: FixedBuffer> StandardPadding for T {
+impl<T: FixedBuffer> StandardPadding for T {
     fn standard_padding<F: FnMut(&[u8])>(&mut self, rem: usize, mut func: F) {
         let size = self.size();
 
@@ -38,18 +38,19 @@ impl <T: FixedBuffer> StandardPadding for T {
 /// This module just implements a simple verison of step_by() since
 /// the function from the standard library is currently unstable.
 /// This should be removed once that function becomes stable.
-
 use std::ops::{Add, Range};
 
 #[derive(Clone)]
 pub struct StepUp<T> {
     next: T,
     end: T,
-    ammount: T
+    ammount: T,
 }
 
-impl <T> Iterator for StepUp<T> where
-        T: Add<T, Output = T> + PartialOrd + Copy {
+impl<T> Iterator for StepUp<T>
+where
+    T: Add<T, Output = T> + PartialOrd + Copy,
+{
     type Item = T;
 
     #[inline]
@@ -68,13 +69,15 @@ pub trait RangeExt<T> {
     fn step_up(self, ammount: T) -> StepUp<T>;
 }
 
-impl <T> RangeExt<T> for Range<T> where
-        T: Add<T, Output = T> + PartialOrd + Copy {
+impl<T> RangeExt<T> for Range<T>
+where
+    T: Add<T, Output = T> + PartialOrd + Copy,
+{
     fn step_up(self, ammount: T) -> StepUp<T> {
         StepUp {
             next: self.start,
             end: self.end,
-            ammount: ammount
+            ammount: ammount,
         }
     }
 }
@@ -122,7 +125,7 @@ pub trait FixedBuffer {
     /// Get the current buffer. The buffer must already be full. This clears the buffer as well.
     fn full_buffer<'s>(&'s mut self) -> &'s [u8];
 
-     /// Get the current buffer.
+    /// Get the current buffer.
     fn current_buffer<'s>(&'s mut self) -> &'s [u8];
 
     /// Get the current position of the buffer.
@@ -222,20 +225,23 @@ pub struct FixedBuffer64 {
     buffer_idx: usize,
 }
 
-impl Clone for FixedBuffer64 { fn clone(&self) -> FixedBuffer64 { *self } }
+impl Clone for FixedBuffer64 {
+    fn clone(&self) -> FixedBuffer64 {
+        *self
+    }
+}
 
 impl FixedBuffer64 {
     /// Create a new buffer
     pub fn new() -> FixedBuffer64 {
         FixedBuffer64 {
             buffer: [0u8; 64],
-            buffer_idx: 0
+            buffer_idx: 0,
         }
     }
 }
 
 impl_fixed_buffer!(FixedBuffer64, 64);
-
 
 /// Write a u32 into a vector, which must be 4 bytes long. The value is written in little-endian
 /// format.
@@ -248,9 +254,8 @@ pub fn write_u32_le(dst: &mut [u8], mut input: u32) {
     }
 }
 
-
 /// Read a vector of bytes into a vector of u32s. The values are read in little-endian format.
-pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {
+pub fn read_u32v_le(dst: &mut [u32], input: &[u8]) {
     assert!(dst.len() * 4 == input.len());
     unsafe {
         let mut x: *mut u32 = dst.get_unchecked_mut(0);
@@ -265,6 +270,3 @@ pub fn read_u32v_le(dst: &mut[u32], input: &[u8]) {
         }
     }
 }
-
-
-

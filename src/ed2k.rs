@@ -1,5 +1,5 @@
 use crypto::digest::Digest;
-use errors::{Result};
+use errors::Result;
 use md4::Md4;
 use std::fs::File;
 use std::io::Read;
@@ -45,14 +45,13 @@ impl Ed2kHash {
             ctx_f.result(&mut md4_digest);
         }
 
-        
         Ok(Ed2kHash {
             bin: md4_digest,
             hex: Self::hex(md4_digest),
             size: file_size as u64,
         })
     }
-    
+
     fn hex(bin: [u8; 16]) -> String {
         let mut ret = String::with_capacity(32);
         for hex in bin.iter() {
@@ -61,4 +60,3 @@ impl Ed2kHash {
         ret
     }
 }
-

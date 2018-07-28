@@ -1,23 +1,23 @@
 extern crate crypto;
 extern crate rusqlite;
 
-mod errors;
 mod cache;
 mod cutil;
 pub mod ed2k;
+mod errors;
 pub mod md4;
 
 pub use errors::{AnidbError, Result};
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::path::PathBuf;
 use std::str;
 use std::thread;
-use std::time::{Instant, Duration};
-use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use std::net::UdpSocket;
 
-use ed2k::Ed2kHash;
 use cache::Cache;
+use ed2k::Ed2kHash;
 
 pub struct Anidb {
     pub socket: UdpSocket,
@@ -66,7 +66,7 @@ pub struct File {
 #[derive(Debug)]
 pub enum Session {
     Disconnected,
-    Pending {user: String, pwd: String},
+    Pending { user: String, pwd: String },
     Connected(String),
 }
 
@@ -108,7 +108,7 @@ impl Anidb {
     pub fn login(&mut self, username: &str, password: &str) -> Result<()> {
         self.session = Session::Pending {
             user: username.to_owned(),
-            pwd: password.to_owned()
+            pwd: password.to_owned(),
         };
         Ok(())
     }
@@ -117,9 +117,8 @@ impl Anidb {
     pub fn logout(&mut self) -> Result<()> {
         // TODO: Non-lexical lifetimes will let us simplify this.
         let logout_cmd = match self.session {
-            Session::Connected(ref session) =>
-                Self::format_logout_string(session),
-            _ => "".to_owned()
+            Session::Connected(ref session) => Self::format_logout_string(session),
+            _ => "".to_owned(),
         };
         if logout_cmd != "" {
             let reply = self.send_wait_reply(&logout_cmd)?;
@@ -159,7 +158,7 @@ impl Anidb {
                 let ep_romaji = fields.next().expect("ep_romaji not found");
                 let group_name = fields.next().expect("group_name not found");
                 let group_short = fields.next().expect("group_short not found");
-                
+
                 Ok(File {
                     fid: fid.parse().expect("fid"),
                     aid: aid.parse().expect("aid"),
@@ -181,7 +180,7 @@ impl Anidb {
                     group_short: group_short.to_owned(),
                 })
             }
-            code => Err(AnidbError::Error(format!("Unexpected code {}", code)))
+            code => Err(AnidbError::Error(format!("Unexpected code {}", code))),
         }
     }
 
@@ -190,8 +189,7 @@ impl Anidb {
         let login_cmd = match self.session {
             Session::Disconnected => String::new(),
             Session::Connected(_) => String::new(),
-            Session::Pending {ref user, ref pwd} =>
-                Self::format_login_string(user, pwd)
+            Session::Pending { ref user, ref pwd } => Self::format_login_string(user, pwd),
         };
         if login_cmd != "" {
             let reply = self.send_wait_reply(&login_cmd)?;
@@ -214,11 +212,17 @@ impl Anidb {
         let v: Vec<&str> = reply.data.split(' ').collect();
 
         if v.len() != 3 {
-            return Err(AnidbError::Error(format!("Invalid AUTH reply: {} expceted 3 args", reply.data)));
+            return Err(AnidbError::Error(format!(
+                "Invalid AUTH reply: {} expceted 3 args",
+                reply.data
+            )));
         }
 
         if v[1] != "LOGIN" || v[2] != "ACCEPTED\n" {
-            return Err(AnidbError::Error(format!("Invalid AUTH reply: {} LOGIN ACCEPTED\\n expected", reply.data)));
+            return Err(AnidbError::Error(format!(
+                "Invalid AUTH reply: {} LOGIN ACCEPTED\\n expected",
+                reply.data
+            )));
         }
 
         Ok(v[0].to_owned())
@@ -254,8 +258,9 @@ impl Anidb {
     fn call_cached(&mut self, message: &str) -> Result<ServerReply> {
         let cached = self.cache.get(message);
         match cached {
-            Err (AnidbError::SqliteError(rusqlite::Error::QueryReturnedNoRows)) =>
-                self.call(message),
+            Err(AnidbError::SqliteError(rusqlite::Error::QueryReturnedNoRows)) => {
+                self.call(message)
+            }
             Err(err) => Err(err),
             Ok(result) => Ok(result),
         }
@@ -275,15 +280,19 @@ impl Anidb {
     }
 
     fn format_login_string(username: &str, password: &str) -> String {
-        format!("AUTH user={}&pass={}&protover=3&client=anidbrs&clientver=1", username, password)
+        format!(
+            "AUTH user={}&pass={}&protover=3&client=anidbrs&clientver=1",
+            username, password
+        )
     }
 
     fn format_file_hash_str(hash: &Ed2kHash) -> String {
-        format!("FILE size={}&ed2k={}&fmask=7000000100&amask=F0B8E0C0",
-                hash.size, hash.hex)
+        format!(
+            "FILE size={}&ed2k={}&fmask=7000000100&amask=F0B8E0C0",
+            hash.size, hash.hex
+        )
     }
 }
-
 
 #[cfg(test)]
 mod test_parse {
@@ -325,7 +334,6 @@ mod test_parse {
 
     fn test_parse_file() {
         let reply = b"220 FILE\n1879191|12235|183230|10435|Little Witch Academia (2017) - 01 - A New Beginning - [Asenshi](6a9d1e5c).mkv|25|25|2017-2017|TV Series|Little Witch Academia (2017)||???????????? (2017)'?? ?? ????? (2017)|lwatv|01|A New Beginning|Arata na Hajimari|AnimeSenshi Subs|Asenshi|1498599583";
-        
     }
 }
 
@@ -336,7 +344,10 @@ mod test_format {
     #[test]
     fn test_format_login_string() {
         let login_string = Anidb::format_login_string("leeloo_dallas", "multipass");
-        assert_eq!(login_string, "AUTH user=leeloo_dallas&pass=multipass&protover=3&client=anidbrs&clientver=1");
+        assert_eq!(
+            login_string,
+            "AUTH user=leeloo_dallas&pass=multipass&protover=3&client=anidbrs&clientver=1"
+        );
     }
 
     #[test]

@@ -1,11 +1,11 @@
 extern crate rusqlite;
 
-use std::io;
-use std::str;
-use std::fmt;
-use std::num;
 use std::error::Error;
+use std::fmt;
+use std::io;
+use std::num;
 use std::result;
+use std::str;
 
 pub type Result<T> = result::Result<T, AnidbError>;
 
@@ -36,7 +36,7 @@ impl fmt::Display for AnidbError {
     }
 }
 
-impl Error for AnidbError  {
+impl Error for AnidbError {
     fn description(&self) -> &str {
         match *self {
             AnidbError::Io(ref err) => err.description(),

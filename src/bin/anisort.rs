@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::iter::FromIterator;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 extern crate walkdir;
@@ -19,7 +19,10 @@ extern crate ini;
 use ini::Ini;
 
 // Config data:
-const APP_INFO: AppInfo = AppInfo { name: "anisort", author: "Baughn" };
+const APP_INFO: AppInfo = AppInfo {
+    name: "anisort",
+    author: "Baughn",
+};
 
 struct ConfigData {
     user: String,
@@ -33,13 +36,15 @@ impl ConfigData {
         ini.with_section(Some("User"))
             .set("username", "<USERNAME>")
             .set("password", "<PASSWORD>");
-        ini.with_section(Some("Target directories"))
-            .set("target", env::home_dir().unwrap().join("Anime").to_string_lossy());
+        ini.with_section(Some("Target directories")).set(
+            "target",
+            env::home_dir().unwrap().join("Anime").to_string_lossy(),
+        );
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         ini.write_to_file(file).expect("Failed to write ini file!");
         panic!("Ini file created. Fill in the template in {:?}", file);
     }
-    
+
     pub fn from_file(file: PathBuf) -> Option<ConfigData> {
         let ini = Ini::load_from_file(&file).unwrap_or_else(|_| ConfigData::initialize_file(&file));
         let user_section = ini.section(Some("User"))?;
@@ -54,7 +59,6 @@ impl ConfigData {
         });
     }
 }
-
 
 /// All the data we could ever want about hashed files...
 #[derive(Debug)]
@@ -90,7 +94,12 @@ fn build_path(file: &File, hashdata: &HashData, target_dir: &PathBuf) -> PathBuf
     assert!(ep_name != "");
     new_name.push_str(&format!(" - {}", ep_name));
     // Extension.
-    let ext = hashdata.filename.extension().expect("Extension").to_str().expect("to_str");
+    let ext = hashdata
+        .filename
+        .extension()
+        .expect("Extension")
+        .to_str()
+        .expect("to_str");
     new_name.push('.');
     new_name.push_str(ext);
     // Build the final path.
@@ -103,10 +112,13 @@ fn build_path(file: &File, hashdata: &HashData, target_dir: &PathBuf) -> PathBuf
 
 fn move_file(mode_noop: bool, from: &PathBuf, to: &PathBuf) {
     if mode_noop {
-        println!("Would move \
-                  {:?} \
-                  to \
-                  {:?}", from, to);
+        println!(
+            "Would move \
+             {:?} \
+             to \
+             {:?}",
+            from, to
+        );
     } else if from == to {
         println!("Not moving {:?}", from);
     } else {
@@ -128,12 +140,12 @@ fn search(db: &Arc<Mutex<Anidb>>, mode_noop: bool, hashdata: HashData, target_di
                 Ok(file) => {
                     let new_path = build_path(&file, &hashdata, target_dir);
                     move_file(mode_noop, &hashdata.filename, &new_path);
-                },
+                }
                 Err(err) => {
                     println!("Looking up {:?}: {}", hashdata.filename, err);
-                },
+                }
             };
-        },
+        }
         Err(err) => {
             println!("Looking up {:?}: {}", hashdata.filename, err);
         }
@@ -141,17 +153,25 @@ fn search(db: &Arc<Mutex<Anidb>>, mode_noop: bool, hashdata: HashData, target_di
 }
 
 fn main() -> () {
-    let config_dir = get_app_root(AppDataType::UserConfig, &APP_INFO).expect("Failed to get app dir");
-    let cache_dir = get_app_root(AppDataType::UserCache, &APP_INFO).expect("Failed to get cache dir");
-    let config = ConfigData::from_file(config_dir.join("config.ini")).expect("Failed to load config file");
-    
+    let config_dir =
+        get_app_root(AppDataType::UserConfig, &APP_INFO).expect("Failed to get app dir");
+    let cache_dir =
+        get_app_root(AppDataType::UserCache, &APP_INFO).expect("Failed to get cache dir");
+    let config =
+        ConfigData::from_file(config_dir.join("config.ini")).expect("Failed to load config file");
+
     // Parse command line for parameters.
-    let mut args : BTreeSet<String> = BTreeSet::from_iter(env::args().skip(1));
+    let mut args: BTreeSet<String> = BTreeSet::from_iter(env::args().skip(1));
     let mode_noop = args.remove("-n");
 
     // Login to AniDB.
-    let db = Arc::new(Mutex::new(Anidb::new(("api.anidb.net", 9000), &cache_dir).unwrap()));
-    db.lock().unwrap().login(&config.user, &config.password).expect("Failed AniDB login");
+    let db = Arc::new(Mutex::new(
+        Anidb::new(("api.anidb.net", 9000), &cache_dir).unwrap(),
+    ));
+    db.lock()
+        .unwrap()
+        .login(&config.user, &config.password)
+        .expect("Failed AniDB login");
 
     // List all files, hash and send them...
     args.iter()

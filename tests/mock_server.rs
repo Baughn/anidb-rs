@@ -1,9 +1,9 @@
 extern crate anidb;
 extern crate rand;
 
+use self::rand::Rng;
 use std::net::UdpSocket;
 use std::str;
-use self::rand::Rng;
 
 use anidb::Result;
 
@@ -33,7 +33,7 @@ impl MockServer {
                     println!("reply: {}", message);
                     self.socket.connect(src).unwrap();
                     self.socket.send(message.as_bytes()).unwrap();
-                },
+                }
                 Err(e) => {
                     println!("couldn't recieve a datagram: {}", e);
                 }
@@ -41,4 +41,3 @@ impl MockServer {
         }
     }
 }
-

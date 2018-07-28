@@ -2,7 +2,7 @@
 
 use crypto::digest::Digest;
 use cutil::RangeExt;
-use cutil::{write_u32_le, read_u32v_le, FixedBuffer, FixedBuffer64, StandardPadding};
+use cutil::{read_u32v_le, write_u32_le, FixedBuffer, FixedBuffer64, StandardPadding};
 
 // initial values for Md4State
 const I0: u32 = 0x67452301;
@@ -14,7 +14,7 @@ struct Md4State {
     s0: u32,
     s1: u32,
     s2: u32,
-    s3: u32
+    s3: u32,
 }
 
 pub struct Md4 {
@@ -24,14 +24,13 @@ pub struct Md4 {
     finished: bool,
 }
 
-
 impl Md4State {
     fn new() -> Md4State {
         Md4State {
             s0: I0,
             s1: I1,
             s2: I2,
-            s3: I3
+            s3: I3,
         }
     }
 
@@ -60,11 +59,17 @@ impl Md4State {
         }
 
         fn op2(a: u32, b: u32, c: u32, d: u32, k: u32, s: u32) -> u32 {
-            a.wrapping_add(g(b, c, d)).wrapping_add(k).wrapping_add(0x5a827999).rotate_left(s)
+            a.wrapping_add(g(b, c, d))
+                .wrapping_add(k)
+                .wrapping_add(0x5a827999)
+                .rotate_left(s)
         }
 
         fn op3(a: u32, b: u32, c: u32, d: u32, k: u32, s: u32) -> u32 {
-            a.wrapping_add(h(b, c, d)).wrapping_add(k).wrapping_add(0x6ED9EBA1).rotate_left(s)
+            a.wrapping_add(h(b, c, d))
+                .wrapping_add(k)
+                .wrapping_add(0x6ED9EBA1)
+                .rotate_left(s)
         }
 
         let mut a = self.s0;
@@ -84,7 +89,6 @@ impl Md4State {
             c = op1(c, d, a, b, data[i + 2], 11);
             b = op1(b, c, d, a, data[i + 3], 19);
         }
-
 
         // round 2
         for i in 0..4 {
@@ -115,7 +119,7 @@ impl Md4 {
             length_bytes: 0,
             buffer: FixedBuffer64::new(),
             state: Md4State::new(),
-            finished: false
+            finished: false,
         }
     }
 }
@@ -126,8 +130,9 @@ impl Digest for Md4 {
         // 2^64 - ie: integer overflow is OK.
         self.length_bytes += input.len() as u64;
         let self_state = &mut self.state;
-        self.buffer.input(input, |d: &[u8]| { self_state.process_block(d);}
-        );
+        self.buffer.input(input, |d: &[u8]| {
+            self_state.process_block(d);
+        });
     }
 
     fn reset(&mut self) {
@@ -140,7 +145,9 @@ impl Digest for Md4 {
     fn result(&mut self, out: &mut [u8]) {
         if !self.finished {
             let self_state = &mut self.state;
-            self.buffer.standard_padding(8, |d: &[u8]| { self_state.process_block(d); });
+            self.buffer.standard_padding(8, |d: &[u8]| {
+                self_state.process_block(d);
+            });
             write_u32_le(self.buffer.next(4), (self.length_bytes << 3) as u32);
             write_u32_le(self.buffer.next(4), (self.length_bytes >> 29) as u32);
             self_state.process_block(self.buffer.full_buffer());
@@ -153,7 +160,11 @@ impl Digest for Md4 {
         write_u32_le(&mut out[12..16], self.state.s3);
     }
 
-    fn output_bits(&self) -> usize { 128 }
+    fn output_bits(&self) -> usize {
+        128
+    }
 
-    fn block_size(&self) -> usize { 64 }
+    fn block_size(&self) -> usize {
+        64
+    }
 }
